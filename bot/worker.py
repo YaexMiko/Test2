@@ -563,38 +563,37 @@ async def queue_status(event):
         await event.reply("**Queue is Empty!**")
         return
     
-    queue_text = "**Current Queue Status:**\n\n"
-    
-    if WORKING:
-        queue_text += "🔄 **Currently Processing:** 1 task\n\n"
+    queue_text = "**Queue Tasks**\n\n"
     
     if QUEUE:
-        queue_text += f"⏳ **Pending Tasks:** {len(QUEUE)}\n\n"
-        
         for i, (task_id, task_data) in enumerate(QUEUE.items(), 1):
             user_info = QUEUE_USERS.get(task_id, {})
             user_name = user_info.get('name', 'Unknown')
+            user_id = user_info.get('id', 'Unknown')
             chat_type = user_info.get('chat_type', 'Unknown')
             
             if isinstance(task_data, str):
                 # URL download
-                queue_text += f"**{i}.** URL Download\n"
-                queue_text += f"   👤 **User:** {user_name}\n"
-                queue_text += f"   📱 **Type:** {chat_type}\n\n"
+                filename = task_data
             else:
                 # File download
                 filename = task_data[0] if isinstance(task_data, list) else "Unknown"
-                queue_text += f"**{i}.** {filename}\n"
-                queue_text += f"   👤 **User:** {user_name}\n"
-                queue_text += f"   📱 **Type:** {chat_type}\n\n"
+            
+            queue_text += f"{i}. `{filename}`\n\n"
+            queue_text += f"**By:** @{user_name} (`{user_id}`)\n"
+            queue_text += f"**Location:** {chat_type}\n"
+            queue_text += f"**Task ID:** `{task_id}`\n\n"
                 
             if i >= 10:  # Limit display to first 10 items
                 remaining = len(QUEUE) - 10
                 if remaining > 0:
-                    queue_text += f"... and {remaining} more tasks"
+                    queue_text += f"... and {remaining} more tasks\n\n"
                 break
+        
+        queue_text += f"**Pending Tasks:** {len(QUEUE)}\n\n"
+        queue_text += "**Note:** To remove your task from queue use /clear <task id>"
     else:
-        queue_text += "✅ **No pending tasks**"
+        queue_text += "**No pending tasks**"
     
     await event.reply(queue_text)
 
@@ -662,11 +661,11 @@ async def clear_task(event):
         
         # Get task info for confirmation
         if isinstance(task_data, str):
-            task_name = "URL Download"
+            task_name = task_data
         else:
             task_name = task_data[0] if isinstance(task_data, list) else "Unknown File"
         
-        await event.reply(f"✅ **Task removed from queue!**\n\n**Task:** {task_name}")
+        await event.reply(f"✅ **Task removed from queue!**\n\n**Task:** `{task_name}`")
         
     except Exception as e:
         LOGS.info(f"Clear task error: {e}")
