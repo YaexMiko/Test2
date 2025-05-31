@@ -146,7 +146,10 @@ async def dl_link(event):
         QUEUE_USERS[link] = {
             'name': sender_name,
             'id': event.sender_id,
-            'chat_type': 'DM'
+            'encoding_chat_id': event.chat_id,  # DM
+            'is_owner': True,  # Only owner can use link command
+            'original_chat_id': event.chat_id,
+            'is_private': True
         }
         TASK_OWNERS[link] = event.sender_id
         
@@ -179,7 +182,8 @@ async def dl_link(event):
         remove_user_task(event.sender_id)
         WORKING.clear()
         LOGS.info(er)
-        await xxx.edit(f"**Download Failed!**\n\n{str(er)}")
+        error_msg = str(er)[:500] + "..." if len(str(er)) > 500 else str(er)
+        await xxx.edit(f"**Download Failed!**\n\n{error_msg}")
         return
     
     es = dt.now()
@@ -219,20 +223,31 @@ async def dl_link(event):
         cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
     stdout, stderr = await process.communicate()
-    er = stderr.decode()
+    return_code = process.returncode
     
     if encoding_key in ENCODING_INFO:
         del ENCODING_INFO[encoding_key]
     
-    try:
-        if er:
-            await xxx.edit(str(er) + "\n\n**ERROR** Contact @danish_00")
-            remove_user_task(event.sender_id)
-            WORKING.clear()
+    if return_code != 0:
+        # Only show error if FFMPEG actually failed
+        er = stderr.decode()
+        error_msg = "FFMPEG encoding failed"
+        if "No such file" in er:
+            error_msg = "Input file not found"
+        elif "Permission denied" in er:
+            error_msg = "Permission denied"
+        elif "Invalid" in er:
+            error_msg = "Invalid file format"
+        
+        await xxx.edit(f"**ENCODING ERROR:**\n\n`{error_msg}`\n\n**Contact @danish_00**")
+        remove_user_task(event.sender_id)
+        WORKING.clear()
+        try:
             os.remove(dl)
-            return os.remove(out)
-    except BaseException:
-        pass
+            os.remove(out)
+        except:
+            pass
+        return
         
     ees = dt.now()
     ttt = time.time()
@@ -262,8 +277,7 @@ async def dl_link(event):
     )
     await nnn.delete()
     
-    # Send completion notification to original chat (if not DM)
-    await send_completion_notification(event.sender_id, event.chat_id, kk)
+    # No group notification for owner DM encoding
     
     org = int(Path(dl).stat().st_size)
     com = int(Path(out).stat().st_size)
@@ -287,11 +301,14 @@ async def dl_link(event):
 async def encod(event):
     try:
         # Owner can encode anywhere (DM + groups), non-owner only in groups
-        if str(event.sender_id) not in OWNER:
+        is_owner = str(event.sender_id) in OWNER
+        
+        if not is_owner:
             # Non-owner: only allow in groups, not in DM
             if event.is_private:
+                await event.reply("❌ **Access Denied!** Non-owners can only encode files in groups, not in DM.")
                 return
-                
+        
         # Check if non-owner user can add task
         can_add, error_msg = can_user_add_task(event.sender_id)
         if not can_add:
@@ -335,7 +352,12 @@ async def encod(event):
             pass
             
         if WORKING or QUEUE:
-            xxx = await event.reply("`Adding To Queue`")
+            # For non-owners in groups, show encoding will happen in group
+            if not is_owner and not event.is_private:
+                xxx = await event.reply("`Adding To Queue - Will encode in this group when ready`")
+            else:
+                xxx = await event.reply("`Adding To Queue`")
+                
             doc = event.media.document
             if doc.id in list(QUEUE.keys()):
                 return await xxx.edit("`THIS FILE ALREADY IN QUEUE`")
@@ -348,13 +370,16 @@ async def encod(event):
             except:
                 sender_name = event.sender.first_name if event.sender.first_name else "Unknown"
             
-            # Determine chat type
-            chat_type = 'DM' if event.is_private else 'Group'
+            # Determine where encoding should happen and notifications should go
+            encoding_chat_id = event.chat_id  # Always encode in original chat
             
             QUEUE_USERS[doc.id] = {
                 'name': sender_name,
                 'id': event.sender_id,
-                'chat_type': chat_type
+                'encoding_chat_id': encoding_chat_id,
+                'is_owner': is_owner,
+                'original_chat_id': event.chat_id,
+                'is_private': event.is_private
             }
             TASK_OWNERS[doc.id] = event.sender_id
             
@@ -370,66 +395,45 @@ async def encod(event):
         add_user_task(event.sender_id, f"immediate_{int(time.time())}", event.chat_id)
         
         WORKING.append(1)
-        xxx = await event.reply("**Downloading...**")
         s = dt.now()
-        ttt = time.time()
-        dir = f"downloads/"
+        xxx = await event.reply("**Downloading...**")
         
-        # Store original event for group notification
-        original_event = event
-        original_chat_id = event.chat_id
+        doc = event.media.document
+        name = filename
         
-        process_id = f"download_{event.media.document.id}_{int(time.time())}"
-        hehe_dl = f"download;{process_id}"
+        dl_process_id = f"download_{doc.id}_{int(time.time())}"
+        hehe_dl = f"download;{dl_process_id}"
         cancel_data_dl = code(hehe_dl)
         
         try:
-            if hasattr(event.media, "document"):
-                file = event.media.document
-                dl = dir + filename
-                with open(dl, "wb") as f:
-                    ok = await download_file(
-                        client=event.client,
-                        location=file,
-                        out=f,
-                        progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
-                            progress(
-                                d, t, xxx, ttt, "Downloading", filename,
-                                cancel_data_dl, event.sender_id
-                            )
-                        ),
-                    )
-            else:
-                dl = await event.client.download_media(
-                    event.media,
-                    dir,
-                    progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
-                        progress(d, t, xxx, ttt, "Downloading", None, cancel_data_dl, event.sender_id)
-                    ),
-                )
+            with open(f"downloads/{name}", "wb") as f:
+                async def down_callback(d, t):
+                    await progress(d, t, xxx, s, "downloading", name, f"{cancel_data_dl}_{event.sender_id}", event.sender_id)
+                    
+                    # Check for cancellation
+                    if dl_process_id in CANCELLED_PROCESSES:
+                        raise Exception("Download cancelled by user")
                 
-            if process_id in CANCELLED_PROCESSES:
-                CANCELLED_PROCESSES.discard(process_id)
-                remove_user_task(event.sender_id)
-                WORKING.clear()
-                return
-                
+                await download_file(event.client, doc, f, progress_callback=down_callback)
+                dl = f"downloads/{name}"
+        
         except Exception as er:
             remove_user_task(event.sender_id)
             WORKING.clear()
             LOGS.info(er)
-            await xxx.edit("**Download Failed or Cancelled!**")
+            error_msg = str(er)[:500] + "..." if len(str(er)) > 500 else str(er)
+            await xxx.edit(f"**Download Failed!**\n\n{error_msg}")
             return
-            
+        
         es = dt.now()
         kk = dl.split("/")[-1]
         aa = kk.split(".")[-1]
-        rr = f"encode"
+        rr = "encode"
         bb = kk.replace(f".{aa}", "_compressed.mkv")
         out = f"{rr}/{bb}"
         thum = "thumb.jpg"
         dtime = ts(int((es - s).seconds) * 1000)
-        hehe = f"{out};{dl};0_{event.sender_id}"
+        hehe = f"{out};{dl};{doc.id}_{event.sender_id}"
         wah = code(hehe)
         
         encoding_key = f"{dl}_{out}"
@@ -458,26 +462,37 @@ async def encod(event):
             cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
         stdout, stderr = await process.communicate()
-        er = stderr.decode()
+        return_code = process.returncode
         
         if encoding_key in ENCODING_INFO:
             del ENCODING_INFO[encoding_key]
         
-        try:
-            if er:
-                await xxx.edit(str(er) + "\n\n**ERROR** Contact @danish_00")
-                remove_user_task(event.sender_id)
-                WORKING.clear()
+        if return_code != 0:
+            # Only show error if FFMPEG actually failed
+            er = stderr.decode()
+            error_msg = "FFMPEG encoding failed"
+            if "No such file" in er:
+                error_msg = "Input file not found"
+            elif "Permission denied" in er:
+                error_msg = "Permission denied"
+            elif "Invalid" in er:
+                error_msg = "Invalid file format"
+            
+            await xxx.edit(f"**ENCODING ERROR:**\n\n`{error_msg}`\n\n**Contact @danish_00**")
+            remove_user_task(event.sender_id)
+            WORKING.clear()
+            try:
                 os.remove(dl)
-                return os.remove(out)
-        except BaseException:
-            pass
+                os.remove(out)
+            except:
+                pass
+            return
             
         ees = dt.now()
         ttt = time.time()
         await nn.delete()
         
-        # Send to sender's DM instead of original chat
+        # Send to task owner's DM (always)
         nnn = await event.client.send_message(event.sender_id, "**Uploading...**")
         
         upload_process_id = f"upload_{out}_{int(time.time())}"
@@ -490,7 +505,7 @@ async def encod(event):
                 file=f,
                 name=out,
                 progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
-                    progress(d, t, nnn, ttt, "uploading..", out.split("/")[-1], cancel_data_upload, event.sender_id)
+                    progress(d, t, nnn, ttt, "uploading..", out.split("/")[-1], f"{cancel_data_upload}_{event.sender_id}", event.sender_id)
                 ),
             )
         fname = out.split("/")[1]
@@ -501,8 +516,24 @@ async def encod(event):
         )
         await nnn.delete()
         
-        # Send completion notification to original chat (if it was a group)
-        await send_completion_notification(event.sender_id, original_chat_id, kk)
+        # Send completion notification based on rules
+        # For owner: only send group notification if original was from group
+        # For non-owner: always send group notification (since they can only encode in groups)
+        should_send_group_notification = False
+        
+        if is_owner:
+            # Owner: send notification only if original was from group
+            should_send_group_notification = not event.is_private
+        else:
+            # Non-owner: always send group notification (they can only encode in groups)
+            should_send_group_notification = True
+        
+        if should_send_group_notification and event.chat_id != event.sender_id:
+            try:
+                notification_msg = f"@{sender_username} **Your Task Has Been Completed Check Bot DM.**\n\n**Original File Name:** `{kk}`"
+                await event.client.send_message(event.chat_id, notification_msg)
+            except Exception as e:
+                LOGS.info(f"Notification error: {e}")
         
         org = int(Path(dl).stat().st_size)
         com = int(Path(out).stat().st_size)
@@ -523,11 +554,132 @@ async def encod(event):
         remove_user_task(event.sender_id)
         WORKING.clear()
         
-    except Exception as er:
+    except Exception as e:
+        LOGS.info(f"Encoding error: {e}")
         remove_user_task(event.sender_id)
         WORKING.clear()
-        LOGS.info(f"Encoding error: {er}")
+
+async def queue_status(event):
+    try:
+        if not QUEUE and not WORKING:
+            await event.reply("**Queue is Empty!**")
+            return
+        
+        queue_msg = "**Current Queue Status:**\n\n"
+        
+        if WORKING:
+            queue_msg += "🔄 **Currently Processing**\n\n"
+        
+        if QUEUE:
+            queue_msg += f"📋 **Queue ({len(QUEUE)} tasks):**\n"
+            
+            for i, (task_id, task_data) in enumerate(QUEUE.items(), 1):
+                task_info = QUEUE_USERS.get(task_id, {})
+                user_name = task_info.get('name', 'Unknown')
+                user_id = task_info.get('id', 'Unknown')
+                
+                if isinstance(task_data, str):
+                    # URL task
+                    queue_msg += f"{i}. @{user_name} ({user_id}) - URL Task\n"
+                else:
+                    # File task
+                    filename = task_data[0] if len(task_data) > 0 else "Unknown"
+                    if len(filename) > 30:
+                        filename = filename[:27] + "..."
+                    queue_msg += f"{i}. @{user_name} ({user_id}) - {filename}\n"
+        
+        # Limit message length
+        if len(queue_msg) > 4000:
+            queue_msg = queue_msg[:3900] + "\n\n... (truncated)"
+        
+        await event.reply(queue_msg)
+        
+    except Exception as e:
+        LOGS.info(f"Queue status error: {e}")
+        await event.reply("❌ **Error getting queue status**")
+
+async def clear_task(event):
+    try:
+        user_id = event.sender_id
+        is_owner = str(user_id) in OWNER
+        
         try:
-            await event.reply(f"**Encoding failed:** {str(er)}")
+            task_id = event.text.split()[1]
         except:
-            pass
+            await event.reply("❌ **Usage:** `/clear <task_id>`\n\nUse `/queue` to see task IDs")
+            return
+        
+        # Find task by position or ID
+        task_found = False
+        task_key = None
+        
+        try:
+            # Try as position number
+            pos = int(task_id) - 1
+            if 0 <= pos < len(QUEUE):
+                task_key = list(QUEUE.keys())[pos]
+                task_found = True
+        except:
+            # Try as direct ID
+            if task_id in QUEUE:
+                task_key = task_id
+                task_found = True
+        
+        if not task_found:
+            await event.reply("❌ **Task not found!** Use `/queue` to see valid task IDs")
+            return
+        
+        # Check permissions
+        task_owner_id = TASK_OWNERS.get(task_key)
+        if not is_owner and user_id != task_owner_id:
+            await event.reply("❌ **Access Denied!** You can only cancel your own tasks")
+            return
+        
+        # Remove task
+        QUEUE.pop(task_key)
+        if task_key in TASK_OWNERS:
+            task_owner = TASK_OWNERS.pop(task_key)
+            remove_user_task(task_owner)
+        if task_key in QUEUE_USERS:
+            QUEUE_USERS.pop(task_key)
+        if task_key in TASK_CHAT_INFO:
+            TASK_CHAT_INFO.pop(task_key)
+        
+        await event.reply("✅ **Task removed from queue!**")
+        
+    except Exception as e:
+        LOGS.info(f"Clear task error: {e}")
+        await event.reply("❌ **Error removing task**")
+
+async def fast_download(message, link, name, cancel_data, task_owner_id):
+    """Fast download function for URL downloads"""
+    import aiohttp
+    import aiofiles
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(link) as response:
+                if response.status == 200:
+                    file_size = int(response.headers.get('content-length', 0))
+                    
+                    async with aiofiles.open(f"downloads/{name}", 'wb') as f:
+                        downloaded = 0
+                        start_time = time.time()
+                        
+                        async for chunk in response.content.iter_chunked(1024 * 1024):  # 1MB chunks
+                            await f.write(chunk)
+                            downloaded += len(chunk)
+                            
+                            # Update progress every 10MB or 5 seconds
+                            if downloaded % (10 * 1024 * 1024) == 0 or (time.time() - start_time) > 5:
+                                try:
+                                    await progress(downloaded, file_size, message, start_time, "downloading", name, f"{cancel_data}_{task_owner_id}", task_owner_id)
+                                except:
+                                    pass
+                    
+                    return f"downloads/{name}"
+                else:
+                    raise Exception(f"HTTP {response.status}: {response.reason}")
+                    
+    except Exception as e:
+        raise Exception(f"Download failed: {str(e)}")
