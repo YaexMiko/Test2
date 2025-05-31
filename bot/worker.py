@@ -286,11 +286,11 @@ async def dl_link(event):
 
 async def encod(event):
     try:
-        # Owner can encode anywhere (DM + groups), non-owner only in groups
-        if str(event.sender_id) not in OWNER:
-            # Non-owner: only allow in groups, not in DM
-            if event.is_private:
-                return
+        is_owner = str(event.sender_id) in OWNER
+        
+        # Access control: Non-owner users can only encode in groups
+        if not is_owner and event.is_private:
+            return  # Non-owner cannot encode in DM
                 
         # Check if non-owner user can add task
         can_add, error_msg = can_user_add_task(event.sender_id)
@@ -334,6 +334,16 @@ async def encod(event):
             pass
             
         if WORKING or QUEUE:
+            # Determine where encoding message should be sent
+            # For non-owners: Always in groups (even if queued)
+            # For owners: Depends on where they sent the file
+            if not is_owner:
+                # Non-owner: encoding message always in group (current chat)
+                encoding_chat_id = event.chat_id
+            else:
+                # Owner: encoding message in the same chat where file was sent
+                encoding_chat_id = event.chat_id
+            
             xxx = await event.reply("`Adding To Queue`")
             doc = event.media.document
             if doc.id in list(QUEUE.keys()):
@@ -347,13 +357,14 @@ async def encod(event):
             except:
                 sender_name = event.sender.first_name if event.sender.first_name else "Unknown"
             
-            # Determine chat type
+            # Determine chat type for display
             chat_type = 'DM' if event.is_private else 'Group'
             
             QUEUE_USERS[doc.id] = {
                 'name': sender_name,
                 'id': event.sender_id,
-                'chat_type': chat_type
+                'chat_type': chat_type,
+                'encoding_chat_id': encoding_chat_id  # Store where encoding should happen
             }
             TASK_OWNERS[doc.id] = event.sender_id
             
@@ -370,7 +381,21 @@ async def encod(event):
         
         WORKING.append(1)
         s = dt.now()
-        xxx = await event.reply("**Downloading...**")
+        
+        # Determine where to send encoding progress messages
+        # For non-owners: Always send in group (current chat if it's a group)
+        # For owners: Send in the same chat where file was sent
+        if not is_owner:
+            if event.is_private:
+                # This shouldn't happen as we return early, but safety check
+                remove_user_task(event.sender_id)
+                WORKING.clear()
+                return
+            # Non-owner in group: send progress in group
+            xxx = await event.reply("**Downloading...**")
+        else:
+            # Owner: send progress in same chat where file was sent
+            xxx = await event.reply("**Downloading...**")
         
         process_id = f"download_{event.media.document.id}_{int(time.time())}"
         hehe_dl = f"download;{process_id}"
@@ -471,8 +496,17 @@ async def encod(event):
         )
         await nnn.delete()
         
-        # Send completion notification to original chat (if not DM)
-        await send_completion_notification(event.sender_id, event.chat_id, filename)
+        # Send completion notification logic:
+        # For non-owners: Always send group notification (as encoding happened in group)
+        # For owners: Send group notification only if original file was sent in group
+        if not is_owner:
+            # Non-owner: Always send group notification
+            await send_completion_notification(event.sender_id, event.chat_id, filename)
+        else:
+            # Owner: Send notification only if file was sent in group
+            if not event.is_private:
+                await send_completion_notification(event.sender_id, event.chat_id, filename)
+            # If owner sent in DM, no group notification
         
         org = int(Path(dl).stat().st_size)
         com = int(Path(out).stat().st_size)
