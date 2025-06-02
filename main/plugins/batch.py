@@ -12,6 +12,7 @@ from .. import userbot, Bot, AUTH
 from .. import FORCESUB as fs
 from main.plugins.pyroplug import get_bulk_msg
 from main.plugins.helpers import get_link, screenshot
+from main.plugins.auth import get_user_client, is_user_authenticated
 
 from telethon import events, Button, errors
 from telethon.tl.types import DocumentAttributeVideo
@@ -68,9 +69,12 @@ async def _batch(event):
     if event.sender_id in batch:
         return await event.reply("You've already started one batch, wait for it to complete you dumbfuck owner!")
     
-    # Check if userbot is available for batch operations
-    if not userbot:
-        await event.reply("❌ Batch processing requires SESSION for userbot functionality. Please configure SESSION to use batch features.")
+    # Check for available userbot (either user-specific or global)
+    user_client = get_user_client(event.sender_id)
+    effective_userbot = user_client or userbot
+    
+    if not effective_userbot:
+        await event.reply("❌ Batch processing requires authentication.\nUse /login to authenticate or contact admin to enable global userbot.")
         return
         
     async with Drone.conversation(event.chat_id) as conv: 
@@ -87,9 +91,9 @@ async def _batch(event):
             await conv.send_message("Cannot wait more longer for your response!")
             return conv.cancel()
             
-        # Check if this is a private channel link
-        if 't.me/c/' in _link and not userbot:
-            await conv.send_message("❌ Private channel batch processing requires SESSION. Only public channels are supported currently.")
+        # Check if this is a private channel link and user needs to be authenticated
+        if 't.me/c/' in _link and not user_client and not userbot:
+            await conv.send_message("❌ Private channel batch processing requires authentication. Use /login first.")
             return conv.cancel()
             
         await conv.send_message("Send me the number of files/range you want to save from the given message, as a reply to this message.", buttons=Button.force_reply())
@@ -108,7 +112,7 @@ async def _batch(event):
             await conv.send_message("Range must be an integer!")
             return conv.cancel()
         batch.append(event.sender_id)
-        await run_batch(userbot, Bot, event.sender_id, _link, value) 
+        await run_batch(effective_userbot, Bot, event.sender_id, _link, value) 
         conv.cancel()
         batch.clear()
 
