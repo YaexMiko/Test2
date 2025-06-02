@@ -1,4 +1,6 @@
-# main/plugins/auth.py
+#Github.com/Vasusen-code
+# User Authentication System
+
 import os
 import asyncio
 from pyrogram import Client
@@ -28,6 +30,20 @@ def create_session_dir():
     """Create sessions directory if it doesn't exist"""
     if not os.path.exists("sessions"):
         os.makedirs("sessions")
+
+def is_user_authenticated(user_id):
+    """Check if user is authenticated"""
+    return user_id in user_sessions and user_sessions[user_id].is_authenticated
+
+def get_user_session_info(user_id):
+    """Get user session information"""
+    if user_id in user_sessions:
+        session = user_sessions[user_id]
+        return {
+            'phone': session.phone_number,
+            'authenticated': session.is_authenticated
+        }
+    return None
 
 @Drone.on(events.NewMessage(incoming=True, pattern='/login'))
 async def login_command(event):
@@ -91,6 +107,31 @@ async def logout_command(event):
     except Exception as e:
         print(f"Logout error for user {user_id}: {e}")
         await event.reply("❌ Error during logout. Please try again.")
+
+@Drone.on(events.NewMessage(incoming=True, pattern='/status'))
+async def status_command(event):
+    if not event.is_private:
+        return
+    
+    user_id = event.sender_id
+    
+    if is_user_authenticated(user_id):
+        session_info = get_user_session_info(user_id)
+        await event.reply(
+            f"✅ **Login Status: Active**\n\n"
+            f"📱 **Phone:** {session_info['phone']}\n"
+            f"🆔 **User ID:** {user_id}\n"
+            f"⏰ **Session:** Active\n\n"
+            f"🎯 You can access private channels and use all features."
+        )
+    else:
+        await event.reply(
+            f"❌ **Login Status: Not Logged In**\n\n"
+            f"🆔 **User ID:** {user_id}\n"
+            f"📱 **Phone:** Not provided\n"
+            f"⏰ **Session:** Inactive\n\n"
+            f"💡 Use /login to authenticate and access private channels."
+        )
 
 @Drone.on(events.NewMessage(incoming=True, func=lambda e: e.is_private and e.sender_id in pending_logins))
 async def handle_login_process(event):
@@ -263,17 +304,3 @@ async def cancel_login_callback(event):
         del pending_logins[user_id]
     
     await event.edit("❌ Login process cancelled.")
-
-# Function to check user authentication status
-def is_user_authenticated(user_id):
-    return user_id in user_sessions and user_sessions[user_id].is_authenticated
-
-# Function to get user session info
-def get_user_session_info(user_id):
-    if user_id in user_sessions:
-        session = user_sessions[user_id]
-        return {
-            'phone': session.phone_number,
-            'authenticated': session.is_authenticated
-        }
-    return None
