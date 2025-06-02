@@ -33,9 +33,6 @@ if SESSION:
         print("Have you added SESSION while deploying?")
         sys.exit(1)
 else:
-    print("⚠️  WARNING: No SESSION provided. Userbot features will be disabled.")
-    print("   - Private channel access will not work")
-    print("   - Only public channel cloning will be available")
     userbot = None
 
 # Initialize Bot client
