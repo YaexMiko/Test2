@@ -30,6 +30,15 @@ async def sett(event):
         if os.path.exists(f'{event.sender_id}.jpg'):
             os.remove(f'{event.sender_id}.jpg')
         os.rename(path, f'./{event.sender_id}.jpg')
+        
+        # Update settings if settings module is available
+        try:
+            from main.plugins.settings import get_user_settings
+            settings = get_user_settings(event.sender_id)
+            settings['has_custom_thumbnail'] = True
+        except ImportError:
+            pass
+        
         await t.edit("Temporary thumbnail saved!")
         
 @Drone.on(events.callbackquery.CallbackQuery(data="rem"))
@@ -38,6 +47,15 @@ async def remt(event):
     await event.edit('Trying.')
     try:
         os.remove(f'{event.sender_id}.jpg')
+        
+        # Update settings if settings module is available
+        try:
+            from main.plugins.settings import get_user_settings
+            settings = get_user_settings(event.sender_id)
+            settings['has_custom_thumbnail'] = False
+        except ImportError:
+            pass
+        
         await event.edit('Removed!')
     except Exception:
         await event.edit("No thumbnail saved.")                        
@@ -46,4 +64,3 @@ async def remt(event):
 async def start(event):
     text = "Send me Link of any message to clone it here, For private channel message, send invite link first.\n\n**SUPPORT:** @TeamDrone"
     await start_srb(event, text)
-    
