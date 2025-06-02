@@ -9,8 +9,11 @@ BOT_TOKEN = config("BOT_TOKEN", "8049166513:AAFmB5M8Qz6uboPYXPiS9PBX3FrQAZbjHA4"
 # Userbot Session Configuration
 SESSION = config("SESSION", default=None)
 
-# Bot Owner Configuration
-AUTH = config("AUTH", "7970350353")
+# Bot Owner Configuration - Convert to integer
+try:
+    AUTH = int(config("AUTH", "7970350353"))
+except (ValueError, TypeError):
+    AUTH = 7970350353
 
 # Force Subscribe Configuration
 FORCESUB = config("FORCESUB", default=None)
@@ -70,11 +73,16 @@ def validate_config():
     if not SESSION:
         print("WARNING: SESSION not provided. Userbot functionality will not work.")
     
+    # Validate AUTH is integer
+    if not isinstance(AUTH, int):
+        raise ValueError("AUTH must be an integer user ID")
+    
     return True
 
 # Initialize validation
 try:
     validate_config()
     print("Configuration loaded successfully!")
+    print(f"Bot Owner ID: {AUTH}")
 except ValueError as e:
     print(f"Configuration Error: {e}")
