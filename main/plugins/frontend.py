@@ -7,6 +7,7 @@ from .. import userbot, Bot
 from .. import FORCESUB as fs
 from main.plugins.pyroplug import get_msg
 from main.plugins.helpers import get_link, join
+from main.plugins.auth import get_user_client, is_user_authenticated
 
 from telethon import events
 from pyrogram.errors import FloodWait
@@ -48,18 +49,39 @@ async def clone(event):
     edit = await event.reply("Processing!")
     try:
         if 't.me/+' in link:
-            if not userbot:
-                await edit.edit("❌ Private channel access requires SESSION. Please contact admin to enable userbot functionality.")
+            # Check for user-specific session first
+            user_client = get_user_client(event.sender_id)
+            if user_client:
+                q = await join(user_client, link)
+                await edit.edit(q)
                 return
-            q = await join(userbot, link)
-            await edit.edit(q)
-            return
+            elif not userbot:
+                await edit.edit("❌ Private channel access requires login.\nUse /login to authenticate your account.")
+                return
+            else:
+                q = await join(userbot, link)
+                await edit.edit(q)
+                return
+                
         if 't.me/' in link:
-            # Check if this is a private channel and userbot is not available
-            if 't.me/c/' in link and not userbot:
-                await edit.edit("❌ Private channel access requires SESSION. Only public channels are supported currently.")
-                return
-            await get_msg(userbot, Bot, Drone, event.sender_id, edit.id, link, 0)
+            # Check if this is a private channel
+            if 't.me/c/' in link:
+                # Try user-specific session first
+                user_client = get_user_client(event.sender_id)
+                if user_client:
+                    await get_msg(user_client, Bot, Drone, event.sender_id, edit.id, link, 0)
+                    return
+                elif not userbot:
+                    await edit.edit("❌ Private channel access requires login.\nUse /login to authenticate your account.")
+                    return
+                else:
+                    await get_msg(userbot, Bot, Drone, event.sender_id, edit.id, link, 0)
+                    return
+            else:
+                # Public channel - can use any client
+                effective_userbot = get_user_client(event.sender_id) or userbot
+                await get_msg(effective_userbot, Bot, Drone, event.sender_id, edit.id, link, 0)
+                
     except FloodWait as fw:
         return await Drone.send_message(event.sender_id, f'Try again after {fw.x} seconds due to floodwait from telegram.')
     except Exception as e:
