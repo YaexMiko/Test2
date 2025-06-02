@@ -22,7 +22,11 @@ from pyrogram.errors import FloodWait
 from ethon.pyfunc import video_metadata
 from ethon.telefunc import force_sub
 
-ft = f"To use this bot you've to join @{fs}."
+# Handle FORCESUB being None
+if fs:
+    ft = f"To use this bot you've to join @{fs}."
+else:
+    ft = None
 
 batch = []
 
@@ -49,11 +53,18 @@ async def _batch(event):
     # Check if user is authorized
     if AUTH_ID and event.sender_id != AUTH_ID:
         return
-        
-    s, r = await force_sub(event.client, fs, event.sender_id, ft) 
-    if s == True:
-        await event.reply(r)
-        return       
+    
+    # Only check force sub if FORCESUB is configured
+    if fs:
+        try:
+            s, r = await force_sub(event.client, fs, event.sender_id, ft)
+            if s == True:
+                await event.reply(r)
+                return
+        except Exception as e:
+            print(f"Force sub check failed: {e}")
+            # Continue without force sub if there's an error
+            
     if event.sender_id in batch:
         return await event.reply("You've already started one batch, wait for it to complete you dumbfuck owner!")
     
@@ -63,44 +74,43 @@ async def _batch(event):
         return
         
     async with Drone.conversation(event.chat_id) as conv: 
-        if s != True:
-            await conv.send_message("Send me the message link you want to start saving from, as a reply to this message.", buttons=Button.force_reply())
+        await conv.send_message("Send me the message link you want to start saving from, as a reply to this message.", buttons=Button.force_reply())
+        try:
+            link = await conv.get_reply()
             try:
-                link = await conv.get_reply()
-                try:
-                    _link = get_link(link.text)
-                except Exception:
-                    await conv.send_message("No link found.")
-                    return conv.cancel()
-            except Exception as e:
-                print(e)
-                await conv.send_message("Cannot wait more longer for your response!")
+                _link = get_link(link.text)
+            except Exception:
+                await conv.send_message("No link found.")
                 return conv.cancel()
-                
-            # Check if this is a private channel link
-            if 't.me/c/' in _link and not userbot:
-                await conv.send_message("❌ Private channel batch processing requires SESSION. Only public channels are supported currently.")
+        except Exception as e:
+            print(e)
+            await conv.send_message("Cannot wait more longer for your response!")
+            return conv.cancel()
+            
+        # Check if this is a private channel link
+        if 't.me/c/' in _link and not userbot:
+            await conv.send_message("❌ Private channel batch processing requires SESSION. Only public channels are supported currently.")
+            return conv.cancel()
+            
+        await conv.send_message("Send me the number of files/range you want to save from the given message, as a reply to this message.", buttons=Button.force_reply())
+        try:
+            _range = await conv.get_reply()
+        except Exception as e:
+            print(e)
+            await conv.send_message("Cannot wait more longer for your response!")
+            return conv.cancel()
+        try:
+            value = int(_range.text)
+            if value > 100:
+                await conv.send_message("You can only get upto 100 files in a single batch.")
                 return conv.cancel()
-                
-            await conv.send_message("Send me the number of files/range you want to save from the given message, as a reply to this message.", buttons=Button.force_reply())
-            try:
-                _range = await conv.get_reply()
-            except Exception as e:
-                print(e)
-                await conv.send_message("Cannot wait more longer for your response!")
-                return conv.cancel()
-            try:
-                value = int(_range.text)
-                if value > 100:
-                    await conv.send_message("You can only get upto 100 files in a single batch.")
-                    return conv.cancel()
-            except ValueError:
-                await conv.send_message("Range must be an integer!")
-                return conv.cancel()
-            batch.append(event.sender_id)
-            await run_batch(userbot, Bot, event.sender_id, _link, value) 
-            conv.cancel()
-            batch.clear()
+        except ValueError:
+            await conv.send_message("Range must be an integer!")
+            return conv.cancel()
+        batch.append(event.sender_id)
+        await run_batch(userbot, Bot, event.sender_id, _link, value) 
+        conv.cancel()
+        batch.clear()
 
 async def run_batch(userbot, client, sender, link, _range):
     for i in range(_range):
