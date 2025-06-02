@@ -19,6 +19,33 @@ def thumbnail(sender):
         return f'{sender}.jpg'
     else:
          return None
+
+def should_force_document(user_id):
+    """Check if user has set upload type to document"""
+    try:
+        from main.plugins.settings import get_user_settings
+        settings = get_user_settings(user_id)
+        return settings['upload_type'] == 'DOCUMENT'
+    except ImportError:
+        return False
+
+def should_send_as_media(user_id):
+    """Check if user has set upload type to media"""
+    try:
+        from main.plugins.settings import get_user_settings
+        settings = get_user_settings(user_id)
+        return settings['upload_type'] == 'MEDIA'
+    except ImportError:
+        return False
+
+def increment_messages_saved(user_id):
+    """Increment the messages saved counter"""
+    try:
+        from main.plugins.settings import get_user_settings
+        settings = get_user_settings(user_id)
+        settings['messages_saved'] += 1
+    except ImportError:
+        pass
       
 async def get_msg(userbot, client, bot, sender, edit_id, msg_link, i):
     
@@ -58,12 +85,14 @@ async def get_msg(userbot, client, bot, sender, edit_id, msg_link, i):
                     edit = await client.edit_message_text(sender, edit_id, "Cloning.")
                     await client.send_message(sender, msg.text.markdown)
                     await edit.delete()
+                    increment_messages_saved(sender)
                     return
             if not msg.media:
                 if msg.text:
                     edit = await client.edit_message_text(sender, edit_id, "Cloning.")
                     await client.send_message(sender, msg.text.markdown)
                     await edit.delete()
+                    increment_messages_saved(sender)
                     return
             edit = await client.edit_message_text(sender, edit_id, "Trying to Download.")
             
@@ -116,40 +145,72 @@ async def get_msg(userbot, client, bot, sender, edit_id, msg_link, i):
                     thumb_path = await screenshot(file, duration, sender)
                 except Exception:
                     thumb_path = None
-                await client.send_video(
-                    chat_id=sender,
-                    video=file,
-                    caption=caption,
-                    supports_streaming=True,
-                    height=height, width=width, duration=duration, 
-                    thumb=thumb_path,
-                    progress=progress_for_pyrogram,
-                    progress_args=(
-                        client,
-                        '**UPLOADING:**\n',
-                        edit,
-                        time.time()
+                
+                # Check user settings for upload type
+                if should_force_document(sender):
+                    await client.send_document(
+                        sender,
+                        file, 
+                        caption=caption,
+                        thumb=thumb_path,
+                        progress=progress_for_pyrogram,
+                        progress_args=(
+                            client,
+                            '**UPLOADING:**\n',
+                            edit,
+                            time.time()
+                        )
                     )
-                )
+                else:
+                    await client.send_video(
+                        chat_id=sender,
+                        video=file,
+                        caption=caption,
+                        supports_streaming=True,
+                        height=height, width=width, duration=duration, 
+                        thumb=thumb_path,
+                        progress=progress_for_pyrogram,
+                        progress_args=(
+                            client,
+                            '**UPLOADING:**\n',
+                            edit,
+                            time.time()
+                        )
+                    )
             
             elif msg.media==MessageMediaType.PHOTO:
                 await edit.edit("Uploading photo.")
                 await bot.send_file(sender, file, caption=caption)
             else:
                 thumb_path=thumbnail(sender)
-                await client.send_document(
-                    sender,
-                    file, 
-                    caption=caption,
-                    thumb=thumb_path,
-                    progress=progress_for_pyrogram,
-                    progress_args=(
-                        client,
-                        '**UPLOADING:**\n',
-                        edit,
-                        time.time()
+                if should_force_document(sender):
+                    await client.send_document(
+                        sender,
+                        file, 
+                        caption=caption,
+                        thumb=thumb_path,
+                        progress=progress_for_pyrogram,
+                        progress_args=(
+                            client,
+                            '**UPLOADING:**\n',
+                            edit,
+                            time.time()
+                        )
                     )
-                )
+                else:
+                    await client.send_document(
+                        sender,
+                        file, 
+                        caption=caption,
+                        thumb=thumb_path,
+                        progress=progress_for_pyrogram,
+                        progress_args=(
+                            client,
+                            '**UPLOADING:**\n',
+                            edit,
+                            time.time()
+                        )
+                    )
             try:
                 os.remove(file)
                 if os.path.isfile(file) == True:
@@ -157,6 +218,7 @@ async def get_msg(userbot, client, bot, sender, edit_id, msg_link, i):
             except Exception:
                 pass
             await edit.delete()
+            increment_messages_saved(sender)
         except (ChannelBanned, ChannelInvalid, ChannelPrivate, ChatIdInvalid, ChatInvalid):
             await client.edit_message_text(sender, edit_id, "Have you joined the channel?")
             return
@@ -179,7 +241,7 @@ async def get_msg(userbot, client, bot, sender, edit_id, msg_link, i):
                         UT = time.time()
                         uploader = await fast_upload(f'{file}', f'{file}', UT, bot, edit, '**UPLOADING:**')
                         attributes = [DocumentAttributeVideo(duration=duration, w=width, h=height, round_message=round_message, supports_streaming=True)] 
-                        await bot.send_file(sender, uploader, caption=caption, thumb=thumb_path, attributes=attributes, force_document=False)
+                        await bot.send_file(sender, uploader, caption=caption, thumb=thumb_path, attributes=attributes, force_document=should_force_document(sender))
                     elif msg.media==MessageMediaType.VIDEO_NOTE:
                         uploader = await fast_upload(f'{file}', f'{file}', UT, bot, edit, '**UPLOADING:**')
                         attributes = [DocumentAttributeVideo(duration=duration, w=width, h=height, round_message=round_message, supports_streaming=True)] 
@@ -190,6 +252,7 @@ async def get_msg(userbot, client, bot, sender, edit_id, msg_link, i):
                         await bot.send_file(sender, uploader, caption=caption, thumb=thumb_path, force_document=True)
                     if os.path.isfile(file) == True:
                         os.remove(file)
+                    increment_messages_saved(sender)
                 except Exception as e:
                     print(e)
                     await client.edit_message_text(sender, edit_id, f'Failed to save: `{msg_link}`\n\nError: {str(e)}')
@@ -222,6 +285,7 @@ async def get_msg(userbot, client, bot, sender, edit_id, msg_link, i):
                 #recurrsion 
                 return await get_msg(userbot, client, bot, sender, edit_id, new_link, i)
             await client.copy_message(sender, chat, msg_id)
+            increment_messages_saved(sender)
         except Exception as e:
             print(e)
             return await client.edit_message_text(sender, edit_id, f'Failed to save: `{msg_link}`\n\nError: {str(e)}')
