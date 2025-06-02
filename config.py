@@ -15,8 +15,11 @@ try:
 except (ValueError, TypeError):
     AUTH = 7970350353
 
-# Force Subscribe Configuration
+# Force Subscribe Configuration - Make it optional
 FORCESUB = config("FORCESUB", "-1002669902570")
+# Remove @ symbol if present
+if FORCESUB and FORCESUB.startswith('@'):
+    FORCESUB = FORCESUB[1:]
 
 # File Download Configuration
 DOWNLOAD_LOCATION = config("DOWNLOAD_LOCATION", default="/app")
@@ -76,6 +79,12 @@ def validate_config():
     # Validate AUTH is integer
     if not isinstance(AUTH, int):
         raise ValueError("AUTH must be an integer user ID")
+    
+    # FORCESUB is optional
+    if FORCESUB:
+        print(f"Force Subscribe Channel: @{FORCESUB}")
+    else:
+        print("Force Subscribe: Disabled")
     
     return True
 
