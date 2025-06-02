@@ -4,7 +4,7 @@ import os
 # Telegram API Configuration
 API_ID = config("API_ID", "28614709")
 API_HASH = config("API_HASH", "f36fd2ee6e3d3a17c4d244ff6dc1bac8")
-BOT_TOKEN = config("BOT_TOKEN", "8049166513:AAFmB5M8Qz6uboPYXPiS9PBX3FrQAZbjHA4")
+BOT_TOKEN = config("BOT_TOKEN", "8191627683:AAFQ_9L3scPgiOgdTeQbfdXGx7oeS-pLDYU")
 
 # Userbot Session Configuration
 SESSION = config("SESSION", default=None)
