@@ -16,7 +16,7 @@ except (ValueError, TypeError):
     AUTH = 7970350353
 
 # Force Subscribe Configuration
-FORCESUB = config("FORCESUB", default=None)
+FORCESUB = config("FORCESUB", "-1002669902570")
 
 # File Download Configuration
 DOWNLOAD_LOCATION = config("DOWNLOAD_LOCATION", default="/app")
