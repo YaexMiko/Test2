@@ -5,6 +5,7 @@ import asyncio, time, os
 from .. import bot as Drone
 from main.plugins.progress import progress_for_pyrogram
 from main.plugins.helpers import screenshot
+from main.plugins.auth import get_user_client
 
 from pyrogram import Client, filters
 from pyrogram.errors import ChannelBanned, ChannelInvalid, ChannelPrivate, ChatIdInvalid, ChatInvalid, PeerIdInvalid
@@ -49,9 +50,13 @@ def increment_messages_saved(user_id):
       
 async def get_msg(userbot, client, bot, sender, edit_id, msg_link, i):
     
-    """ userbot: PyrogramUserBot
+    """ userbot: PyrogramUserBot (can be user-specific or global)
     client: PyrogramBotClient
     bot: TelethonBotClient """
+    
+    # Try to get user-specific client first
+    user_client = get_user_client(sender)
+    effective_userbot = user_client or userbot
     
     edit = ""
     chat = ""
@@ -69,13 +74,13 @@ async def get_msg(userbot, client, bot, sender, edit_id, msg_link, i):
         file = ""
         
         # Check if userbot is available for private channels
-        if 't.me/c/' in msg_link and not userbot:
-            await client.edit_message_text(sender, edit_id, "❌ Private channel access requires SESSION. Please contact admin to enable userbot functionality.")
+        if 't.me/c/' in msg_link and not effective_userbot:
+            await client.edit_message_text(sender, edit_id, "❌ Private channel access requires login. Use /login to authenticate your account.")
             return
             
         try:
-            if userbot:
-                msg = await userbot.get_messages(chat, msg_id)
+            if effective_userbot:
+                msg = await effective_userbot.get_messages(chat, msg_id)
             else:
                 # For public channels/bots, try with bot client
                 msg = await client.get_messages(chat, msg_id)
@@ -97,7 +102,7 @@ async def get_msg(userbot, client, bot, sender, edit_id, msg_link, i):
             edit = await client.edit_message_text(sender, edit_id, "Trying to Download.")
             
             # Use appropriate client for download
-            download_client = userbot if userbot else client
+            download_client = effective_userbot if effective_userbot else client
             file = await download_client.download_media(
                 msg,
                 progress=progress_for_pyrogram,
@@ -229,7 +234,7 @@ async def get_msg(userbot, client, bot, sender, edit_id, msg_link, i):
                 new_link = f"t.me/c/{chat}/{msg_id}"
             except:
                 new_link = f"t.me/b/{chat}/{msg_id}"
-            return await get_msg(userbot, client, bot, sender, edit_id, new_link, i)
+            return await get_msg(effective_userbot, client, bot, sender, edit_id, new_link, i)
         except Exception as e:
             print(e)
             if "messages.SendMedia" in str(e) \
@@ -283,7 +288,7 @@ async def get_msg(userbot, client, bot, sender, edit_id, msg_link, i):
             if msg.empty:
                 new_link = f't.me/b/{chat}/{int(msg_id)}'
                 #recurrsion 
-                return await get_msg(userbot, client, bot, sender, edit_id, new_link, i)
+                return await get_msg(effective_userbot, client, bot, sender, edit_id, new_link, i)
             await client.copy_message(sender, chat, msg_id)
             increment_messages_saved(sender)
         except Exception as e:
