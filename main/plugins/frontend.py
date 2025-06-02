@@ -36,14 +36,20 @@ async def clone(event):
     edit = await event.reply("Processing!")
     try:
         if 't.me/+' in link:
+            if not userbot:
+                await edit.edit("❌ Private channel access requires SESSION. Please contact admin to enable userbot functionality.")
+                return
             q = await join(userbot, link)
             await edit.edit(q)
             return
         if 't.me/' in link:
+            # Check if this is a private channel and userbot is not available
+            if 't.me/c/' in link and not userbot:
+                await edit.edit("❌ Private channel access requires SESSION. Only public channels are supported currently.")
+                return
             await get_msg(userbot, Bot, Drone, event.sender_id, edit.id, link, 0)
     except FloodWait as fw:
         return await Drone.send_message(event.sender_id, f'Try again after {fw.x} seconds due to floodwait from telegram.')
     except Exception as e:
         print(e)
         await Drone.send_message(event.sender_id, f"An error occurred during cloning of `{link}`\n\n**Error:** {str(e)}")
-    
