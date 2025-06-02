@@ -33,14 +33,26 @@ async def get_msg(userbot, client, bot, sender, edit_id, msg_link, i):
         msg_link = msg_link.split("?single")[0]
     msg_id = int(msg_link.split("/")[-1]) + int(i)
     height, width, duration, thumb_path = 90, 90, 0, None
+    
     if 't.me/c/' or 't.me/b/' in msg_link:
         if 't.me/b/' in msg_link:
             chat = str(msg_link.split("/")[-2])
         else:
             chat = int('-100' + str(msg_link.split("/")[-2]))
         file = ""
+        
+        # Check if userbot is available for private channels
+        if 't.me/c/' in msg_link and not userbot:
+            await client.edit_message_text(sender, edit_id, "❌ Private channel access requires SESSION. Please contact admin to enable userbot functionality.")
+            return
+            
         try:
-            msg = await userbot.get_messages(chat, msg_id)
+            if userbot:
+                msg = await userbot.get_messages(chat, msg_id)
+            else:
+                # For public channels/bots, try with bot client
+                msg = await client.get_messages(chat, msg_id)
+                
             if msg.media:
                 if msg.media==MessageMediaType.WEB_PAGE:
                     edit = await client.edit_message_text(sender, edit_id, "Cloning.")
@@ -54,7 +66,10 @@ async def get_msg(userbot, client, bot, sender, edit_id, msg_link, i):
                     await edit.delete()
                     return
             edit = await client.edit_message_text(sender, edit_id, "Trying to Download.")
-            file = await userbot.download_media(
+            
+            # Use appropriate client for download
+            download_client = userbot if userbot else client
+            file = await download_client.download_media(
                 msg,
                 progress=progress_for_pyrogram,
                 progress_args=(
@@ -152,7 +167,7 @@ async def get_msg(userbot, client, bot, sender, edit_id, msg_link, i):
                 new_link = f"t.me/c/{chat}/{msg_id}"
             except:
                 new_link = f"t.me/b/{chat}/{msg_id}"
-            return await get_msg(userbot, client, bot, sender, edit_id, msg_link, i)
+            return await get_msg(userbot, client, bot, sender, edit_id, new_link, i)
         except Exception as e:
             print(e)
             if "messages.SendMedia" in str(e) \
