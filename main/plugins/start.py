@@ -3,6 +3,7 @@
 import os
 from .. import bot as Drone
 from telethon import events, Button
+from main.plugins.auth import is_user_authenticated, get_user_session_info
 
 from ethon.mystarts import start_srb
     
@@ -62,5 +63,23 @@ async def remt(event):
   
 @Drone.on(events.NewMessage(incoming=True, pattern=f"{S}"))
 async def start(event):
-    text = "Send me Link of any message to clone it here, For private channel message, send invite link first.\n\n**SUPPORT:** @TeamDrone"
+    user_id = event.sender_id
+    
+    # Check authentication status
+    auth_status = ""
+    if is_user_authenticated(user_id):
+        session_info = get_user_session_info(user_id)
+        auth_status = f"\n\n🔐 **Status:** Logged in ({session_info['phone']})"
+    else:
+        auth_status = f"\n\n🔐 **Status:** Not logged in\n💡 Use /login to access private channels"
+    
+    text = ("Send me Link of any message to clone it here, For private channel message, send invite link first.\n\n"
+            "**COMMANDS:**\n"
+            "🔐 /login - Login with your account\n"
+            "🚪 /logout - Logout from your account\n"
+            "📊 /status - Check login status\n"
+            "⚙️ /settings - Manage bot settings\n"
+            "📦 /batch - Batch download (owner only)\n\n"
+            f"**SUPPORT:** @TeamDrone{auth_status}")
+    
     await start_srb(event, text)
