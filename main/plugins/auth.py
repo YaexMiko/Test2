@@ -133,7 +133,13 @@ async def status_command(event):
             f"💡 Use /login to authenticate and access private channels."
         )
 
-@Drone.on(events.NewMessage(incoming=True, func=lambda e: e.is_private and e.sender_id in pending_logins))
+# FIXED: More specific pattern matching to avoid conflicts
+@Drone.on(events.NewMessage(incoming=True, func=lambda e: (
+    e.is_private and 
+    e.sender_id in pending_logins and 
+    not e.text.startswith('/') and  # Avoid command conflicts
+    not e.text.startswith('t.me/')  # Avoid link conflicts
+)))
 async def handle_login_process(event):
     user_id = event.sender_id
     login_data = pending_logins[user_id]
