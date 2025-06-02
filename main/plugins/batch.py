@@ -43,6 +43,12 @@ async def _batch(event):
         return       
     if event.sender_id in batch:
         return await event.reply("You've already started one batch, wait for it to complete you dumbfuck owner!")
+    
+    # Check if userbot is available for batch operations
+    if not userbot:
+        await event.reply("❌ Batch processing requires SESSION for userbot functionality. Please configure SESSION to use batch features.")
+        return
+        
     async with Drone.conversation(event.chat_id) as conv: 
         if s != True:
             await conv.send_message("Send me the message link you want to start saving from, as a reply to this message.", buttons=Button.force_reply())
@@ -57,6 +63,12 @@ async def _batch(event):
                 print(e)
                 await conv.send_message("Cannot wait more longer for your response!")
                 return conv.cancel()
+                
+            # Check if this is a private channel link
+            if 't.me/c/' in _link and not userbot:
+                await conv.send_message("❌ Private channel batch processing requires SESSION. Only public channels are supported currently.")
+                return conv.cancel()
+                
             await conv.send_message("Send me the number of files/range you want to save from the given message, as a reply to this message.", buttons=Button.force_reply())
             try:
                 _range = await conv.get_reply()
@@ -110,4 +122,3 @@ async def run_batch(userbot, client, sender, link, _range):
         protection = await client.send_message(sender, f"Sleeping for `{timer}` seconds to avoid Floodwaits and Protect account!")
         await asyncio.sleep(timer)
         await protection.delete()
-            
