@@ -7,7 +7,7 @@ from .. import userbot, Bot
 from .. import FORCESUB as fs
 from main.plugins.pyroplug import get_msg
 from main.plugins.helpers import get_link, join
-from main.plugins.auth import get_user_client, is_user_authenticated
+from main.plugins.auth import get_user_client, is_user_authenticated, pending_logins
 
 from telethon import events
 from pyrogram.errors import FloodWait
@@ -22,7 +22,13 @@ else:
 
 message = "Send me the message link you want to start saving from, as a reply to this message."
 
-@Drone.on(events.NewMessage(incoming=True, func=lambda e: e.is_private))
+# FIXED: More specific function to avoid conflicts with auth system
+@Drone.on(events.NewMessage(incoming=True, func=lambda e: (
+    e.is_private and 
+    e.sender_id not in pending_logins and  # Don't interfere with login process
+    not e.text.startswith('/') and  # Don't handle commands
+    't.me/' in e.text  # Only handle telegram links
+)))
 async def clone(event):
     if event.is_reply:
         reply = await event.get_reply_message()
