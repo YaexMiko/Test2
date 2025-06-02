@@ -13,7 +13,11 @@ from pyrogram.errors import FloodWait
 
 from ethon.telefunc import force_sub
 
-ft = f"To use this bot you've to join @{fs}."
+# Handle FORCESUB being None
+if fs:
+    ft = f"To use this bot you've to join @{fs}."
+else:
+    ft = None
 
 message = "Send me the message link you want to start saving from, as a reply to this message."
 
@@ -29,10 +33,18 @@ async def clone(event):
             return
     except TypeError:
         return
-    s, r = await force_sub(event.client, fs, event.sender_id, ft)
-    if s == True:
-        await event.reply(r)
-        return
+    
+    # Only check force sub if FORCESUB is configured
+    if fs:
+        try:
+            s, r = await force_sub(event.client, fs, event.sender_id, ft)
+            if s == True:
+                await event.reply(r)
+                return
+        except Exception as e:
+            print(f"Force sub check failed: {e}")
+            # Continue without force sub if there's an error
+    
     edit = await event.reply("Processing!")
     try:
         if 't.me/+' in link:
