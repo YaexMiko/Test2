@@ -16,7 +16,11 @@ API_ID = config("API_ID", "28614709")
 API_HASH = config("API_HASH", "f36fd2ee6e3d3a17c4d244ff6dc1bac8")
 BOT_TOKEN = config("BOT_TOKEN", "8049166513:AAFmB5M8Qz6uboPYXPiS9PBX3FrQAZbjHA4")
 SESSION = config("SESSION", default=None)
+
+# Handle FORCESUB properly
 FORCESUB = config("FORCESUB", default=None)
+if FORCESUB and FORCESUB.startswith('@'):
+    FORCESUB = FORCESUB[1:]
 
 # Convert AUTH to integer to avoid phone number error
 try:
@@ -71,3 +75,21 @@ print(f"   - Bot Token: {BOT_TOKEN[:10]}...")
 print(f"   - Owner ID: {AUTH}")
 print(f"   - Force Sub: {FORCESUB if FORCESUB else 'Disabled'}")
 print(f"   - Userbot: {'Enabled' if userbot else 'Disabled'}")
+
+# Test force sub channel if configured
+if FORCESUB:
+    async def test_forcesub():
+        try:
+            entity = await bot.get_entity(FORCESUB)
+            print(f"✅ Force subscribe channel found: {entity.title}")
+        except Exception as e:
+            print(f"❌ Force subscribe channel error: {e}")
+            print("⚠️  Either add bot as admin to the channel or disable FORCESUB")
+    
+    # Run the test
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(test_forcesub())
+    except:
+        pass
